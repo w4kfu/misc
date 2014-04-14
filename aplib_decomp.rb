@@ -1,4 +1,4 @@
-# use aplib with ruby example
+# use aplib with ruby
 
 require 'fiddle/import'
 
