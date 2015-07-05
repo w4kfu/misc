@@ -228,7 +228,7 @@ MakeZwSyscall(ZwCreateProcess_lpfn, ZwCreateProcess,
 
 /* ZwQuerySection */
 MakeZwSyscall(ZwQuerySection_lpfn, ZwQuerySection,
-    HANDLE 	SectionHandle,
+    HANDLE     SectionHandle,
     SECTION_INFORMATION_CLASS SectionInformationClass,
     PVOID SectionInformation,
     SIZE_T Length,
@@ -407,25 +407,25 @@ BOOL ResolveZwFunc(VOID)
 
 PWSTR CopyEnvironment(HANDLE hProcess)
 {
-	PWSTR env = GetEnvironmentStringsW();
+    PWSTR env = GetEnvironmentStringsW();
     SIZE_T AllocationSize;
     PVOID BaseAddress = 0;
     NTSTATUS Status;
 
-	for (AllocationSize = 0; env[AllocationSize] != 0; AllocationSize += wcslen(env + AllocationSize) + 1);
+    for (AllocationSize = 0; env[AllocationSize] != 0; AllocationSize += wcslen(env + AllocationSize) + 1);
     AllocationSize *= sizeof (*env);
-	Status = ZwAllocateVirtualMemory(hProcess, &BaseAddress, 0,
-							(PULONG)&AllocationSize, MEM_COMMIT, PAGE_READWRITE);
-	if (!NT_SUCCESS(Status)) {
+    Status = ZwAllocateVirtualMemory(hProcess, &BaseAddress, 0,
+                    (PULONG)&AllocationSize, MEM_COMMIT, PAGE_READWRITE);
+    if (!NT_SUCCESS(Status)) {
         fprintf(stderr, "CopyEnvironment - ZwAllocateVirtualMemory failed : 0x%08X\n", Status);
-		return NULL;
-	}
-	Status = ZwWriteVirtualMemory(hProcess, BaseAddress, env, AllocationSize, 0);
-	if (!NT_SUCCESS(Status)) {
+        return NULL;
+    }
+    Status = ZwWriteVirtualMemory(hProcess, BaseAddress, env, AllocationSize, 0);
+    if (!NT_SUCCESS(Status)) {
         fprintf(stderr, "CopyEnvironment - ZwWriteVirtualMemory failed : 0x%08X\n", Status);
-		return NULL;
-	}
-	return (PWSTR)BaseAddress;
+        return NULL;
+    }
+    return (PWSTR)BaseAddress;
 }
 
 BOOL BaseCreateStack(HANDLE hSection, HANDLE hProcess, PINITIAL_TEB InitTeb, PCONTEXT Context)
@@ -438,9 +438,9 @@ BOOL BaseCreateStack(HANDLE hSection, HANDLE hProcess, PINITIAL_TEB InitTeb, PCO
 
     Status = ZwQuerySection(hSection, SectionImageInformation, &ImageInfo, sizeof(ImageInfo), NULL);
     if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "main - ZwQuerySection failed : 0x%08X\n", Status);
-		return FALSE;
-   	}
+        fprintf(stderr, "main - ZwQuerySection failed : 0x%08X\n", Status);
+        return FALSE;
+       }
     printf("[+] ImageInfo.MaximumStackSize   : 0x%08X\n", ImageInfo.MaximumStackSize);
     printf("[+] ImageInfo.CommittedStackSize : 0x%08X\n", ImageInfo.CommittedStackSize);
 #if _WIN64
@@ -448,31 +448,31 @@ BOOL BaseCreateStack(HANDLE hSection, HANDLE hProcess, PINITIAL_TEB InitTeb, PCO
 #else
     printf("[+] ImageInfo.TransferAddress    : 0x%08X\n", ImageInfo.TransferAddress);
 #endif
-	Status = ZwAllocateVirtualMemory(hProcess, &InitTeb->StackAllocationBase,
+    Status = ZwAllocateVirtualMemory(hProcess, &InitTeb->StackAllocationBase,
                                     0, (PULONG)&ImageInfo.MaximumStackSize, MEM_RESERVE,
                                     PAGE_READWRITE);
-	if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "BaseCreateStack - ZwAllocateVirtualMemory failed : 0x%08X\n", Status);
-		return FALSE;
-	}
+    if (!NT_SUCCESS(Status)) {
+        fprintf(stderr, "BaseCreateStack - ZwAllocateVirtualMemory failed : 0x%08X\n", Status);
+        return FALSE;
+    }
     printf("[+] InitTeb->StackAllocationBase  : 0x%08X\n", InitTeb->StackAllocationBase);
-	InitTeb->StackBase = (PVOID)((DWORD64)InitTeb->StackAllocationBase + ImageInfo.MaximumStackSize);
-	InitTeb->StackLimit = (PVOID)((DWORD64)InitTeb->StackBase - ImageInfo.CommittedStackSize);
-	AllocationSize = (ULONG)(ImageInfo.CommittedStackSize + 0x1000);
-	BaseAddress = (PVOID)((PCHAR)InitTeb->StackBase - AllocationSize);
-	Status = ZwAllocateVirtualMemory(hProcess, (PVOID*)&BaseAddress, 0, &AllocationSize,
-								MEM_COMMIT, PAGE_READWRITE);
-	if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "BaseCreateStack - ZwAllocateVirtualMemory failed : 0x%08X\n", Status);
-		return FALSE;
-	}
-	AllocationSize = 0x1000;
-	Status = ZwProtectVirtualMemory(hProcess, (PVOID*)&BaseAddress, (PSIZE_T)&AllocationSize,
-								PAGE_READWRITE|PAGE_GUARD, &OldProtect);
-	if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "BaseCreateStack - ZwProtectVirtualMemory failed : 0x%08X\n", Status);
-		return FALSE;
-	}
+    InitTeb->StackBase = (PVOID)((DWORD64)InitTeb->StackAllocationBase + ImageInfo.MaximumStackSize);
+    InitTeb->StackLimit = (PVOID)((DWORD64)InitTeb->StackBase - ImageInfo.CommittedStackSize);
+    AllocationSize = (ULONG)(ImageInfo.CommittedStackSize + 0x1000);
+    BaseAddress = (PVOID)((PCHAR)InitTeb->StackBase - AllocationSize);
+    Status = ZwAllocateVirtualMemory(hProcess, (PVOID*)&BaseAddress, 0, &AllocationSize,
+                                MEM_COMMIT, PAGE_READWRITE);
+    if (!NT_SUCCESS(Status)) {
+        fprintf(stderr, "BaseCreateStack - ZwAllocateVirtualMemory failed : 0x%08X\n", Status);
+        return FALSE;
+    }
+    AllocationSize = 0x1000;
+    Status = ZwProtectVirtualMemory(hProcess, (PVOID*)&BaseAddress, (PSIZE_T)&AllocationSize,
+                                PAGE_READWRITE|PAGE_GUARD, &OldProtect);
+    if (!NT_SUCCESS(Status)) {
+        fprintf(stderr, "BaseCreateStack - ZwProtectVirtualMemory failed : 0x%08X\n", Status);
+        return FALSE;
+    }
 #if _WIN64
     BaseInitializeContext(Context, 0x00, 0x00, (DWORD64)InitTeb->StackBase - 4, (DWORD64)ImageInfo.TransferAddress);
 #else
@@ -493,16 +493,16 @@ BOOL BasePushProcessParameters(HANDLE hProcess)
     wchar_t PathFile[0x200];
 
     if (!GetCurrentDirectoryW(sizeof (CurrentDir) - 1, CurrentDir)) {
-		fprintf(stderr, "GetCurrentDirectory failed : 0x%lu\n", GetLastError());
-		return FALSE;
+        fprintf(stderr, "GetCurrentDirectory failed : 0x%lu\n", GetLastError());
+        return FALSE;
     }
     swprintf_s(PathFile, sizeof (PathFile), L"%s%s", CurrentDir, FILENAME);
     Status = ZwQueryInformationProcess(hProcess, ProcessBasicInformation,
-								&ProcessInfo, sizeof(ProcessInfo), NULL);
+                                &ProcessInfo, sizeof(ProcessInfo), NULL);
     if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "ZwQueryInformationProcess failed : 0x%08X\n", Status);
-		return FALSE;
-   	}
+        fprintf(stderr, "ZwQueryInformationProcess failed : 0x%08X\n", Status);
+        return FALSE;
+       }
 #if _WIN64
     printf("[+] ProcessInfo.PebBaseAddress  : 0x%016llX\n", ProcessInfo.PebBaseAddress);
 #else
@@ -510,48 +510,48 @@ BOOL BasePushProcessParameters(HANDLE hProcess)
 #endif
     RtlInitUnicodeString(&FilePath, (PWSTR)PathFile);
     printf("[+] path = %S\n", PathFile);
-	Status = RtlCreateProcessParameters(&ProcessParameters, &FilePath, 0, 0, 0, 0, 0, 0, 0, 0);
-	if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "RtlCreateProcessParameters failed : 0x%08X\n", Status);
-		return FALSE;
-	}
-	ProcessParameters->Environment = CopyEnvironment(hProcess);
-	AllocationSize = ProcessParameters->MaximumLength;
-	BaseAddress = 0;
-	Status = ZwAllocateVirtualMemory(hProcess, &BaseAddress, 0, &AllocationSize, MEM_COMMIT, PAGE_READWRITE);
-	if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "Main - ZwAllocateVirtualMemory failed : 0x%08X\n", Status);
-		return FALSE;
-	}
+    Status = RtlCreateProcessParameters(&ProcessParameters, &FilePath, 0, 0, 0, 0, 0, 0, 0, 0);
+    if (!NT_SUCCESS(Status)) {
+        fprintf(stderr, "RtlCreateProcessParameters failed : 0x%08X\n", Status);
+        return FALSE;
+    }
+    ProcessParameters->Environment = CopyEnvironment(hProcess);
+    AllocationSize = ProcessParameters->MaximumLength;
+    BaseAddress = 0;
+    Status = ZwAllocateVirtualMemory(hProcess, &BaseAddress, 0, &AllocationSize, MEM_COMMIT, PAGE_READWRITE);
+    if (!NT_SUCCESS(Status)) {
+        fprintf(stderr, "Main - ZwAllocateVirtualMemory failed : 0x%08X\n", Status);
+        return FALSE;
+    }
 #if _WIN64
     printf("[+] ProcessInfo.PebBaseAddress  : 0x%016llX\n", BaseAddress);
 #else
     printf("[+] ProcessInfo.PebBaseAddress  : 0x%08X\n", BaseAddress);
 #endif
-	Status = ZwWriteVirtualMemory(hProcess, BaseAddress, ProcessParameters, ProcessParameters->MaximumLength, 0);
-	if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "Main - ZwWriteVirtualMemory failed : 0x%08X\n", Status);
-		return FALSE;
-	}
+    Status = ZwWriteVirtualMemory(hProcess, BaseAddress, ProcessParameters, ProcessParameters->MaximumLength, 0);
+    if (!NT_SUCCESS(Status)) {
+        fprintf(stderr, "Main - ZwWriteVirtualMemory failed : 0x%08X\n", Status);
+        return FALSE;
+    }
 #if _WIN64
 /*
 0:001> dt nt!_PEB ProcessParameters
 ntdll!_PEB
    +0x020 ProcessParameters : Ptr64 _RTL_USER_PROCESS_PARAMETERS
 */
-	Status = ZwWriteVirtualMemory(hProcess, (PCHAR)(ProcessInfo.PebBaseAddress) + 0x020, &BaseAddress, sizeof(BaseAddress), 0);
+    Status = ZwWriteVirtualMemory(hProcess, (PCHAR)(ProcessInfo.PebBaseAddress) + 0x020, &BaseAddress, sizeof(BaseAddress), 0);
 #else
-	Status = ZwWriteVirtualMemory(hProcess, (PCHAR)(ProcessInfo.PebBaseAddress) + 0x10, &BaseAddress, sizeof(BaseAddress), 0);
+    Status = ZwWriteVirtualMemory(hProcess, (PCHAR)(ProcessInfo.PebBaseAddress) + 0x10, &BaseAddress, sizeof(BaseAddress), 0);
 #endif
-	if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "ZwWriteVirtualMemory failed : 0x%08X\n", Status);
-		return FALSE;
-	}
-	Status = RtlDestroyProcessParameters(ProcessParameters);
-	if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "RtlDestroyProcessParameters failed : 0x%08X\n", Status);
-		return FALSE;
-	}
+    if (!NT_SUCCESS(Status)) {
+        fprintf(stderr, "ZwWriteVirtualMemory failed : 0x%08X\n", Status);
+        return FALSE;
+    }
+    Status = RtlDestroyProcessParameters(ProcessParameters);
+    if (!NT_SUCCESS(Status)) {
+        fprintf(stderr, "RtlDestroyProcessParameters failed : 0x%08X\n", Status);
+        return FALSE;
+    }
     return TRUE;
 }
 
@@ -582,21 +582,21 @@ int main(void)
         goto end;
     }
     InitializeObjectAttributes(&ObjectAttributes, NULL, 0, NULL, NULL);
-	Status = ZwCreateSection(&hSection, SECTION_ALL_ACCESS, &ObjectAttributes,
+    Status = ZwCreateSection(&hSection, SECTION_ALL_ACCESS, &ObjectAttributes,
                             0, PAGE_EXECUTE, SEC_IMAGE, hFile);
-	if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "main - ZwCreateSection failed : 0x%08X\n", Status);
-		goto end;
-	}
+    if (!NT_SUCCESS(Status)) {
+        fprintf(stderr, "main - ZwCreateSection failed : 0x%08X\n", Status);
+        goto end;
+    }
     printf("[+] hSection : 0x%08X\n", hSection);
 
     /* Create the Windows executive object */
     Status = ZwCreateProcess(&hProcess, PROCESS_ALL_ACCESS, NULL,
                             GetCurrentProcess(), TRUE, hSection, NULL, NULL);
-	if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "main - ZwCreateProcess failed : 0x%08X\n", Status);
-		goto end;
-	}
+    if (!NT_SUCCESS(Status)) {
+        fprintf(stderr, "main - ZwCreateProcess failed : 0x%08X\n", Status);
+        goto end;
+    }
     printf("[+] hProcess : 0x%08X\n", hProcess);
 
     /* Create the initial thread (stack, context, ...) */
@@ -606,12 +606,12 @@ int main(void)
 
     /* Creates and initializes a thread object (suspended)*/
     InitializeObjectAttributes(&ObjectAttributes, NULL, 0, NULL, NULL);
-	Status = ZwCreateThread(&hThread, THREAD_ALL_ACCESS, NULL, hProcess,
-						&ClientId, &Context, &InitTeb, TRUE);
-	if (!NT_SUCCESS(Status)) {
-		fprintf(stderr, "ZwCreateThread failed : 0x%08X\n", Status);
-		goto end;
-	}
+    Status = ZwCreateThread(&hThread, THREAD_ALL_ACCESS, NULL, hProcess,
+                        &ClientId, &Context, &InitTeb, TRUE);
+    if (!NT_SUCCESS(Status)) {
+        fprintf(stderr, "ZwCreateThread failed : 0x%08X\n", Status);
+        goto end;
+    }
 
     /* Init ProcessParameters in PEB */
     if (BasePushProcessParameters(hProcess) == FALSE) {
