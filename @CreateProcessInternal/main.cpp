@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <Windows.h>
 
-#define FILENAME L"messagebox.exe"
+#define FILENAME    L"messagebox.exe"
+#define PAGE_SIZE   0x1000
 
 /* ntdef.h */
 
@@ -458,7 +459,7 @@ BOOL BaseCreateStack(HANDLE hSection, HANDLE hProcess, PINITIAL_TEB InitTeb, PCO
     printf("[+] InitTeb->StackAllocationBase  : 0x%08X\n", InitTeb->StackAllocationBase);
     InitTeb->StackBase = (PVOID)((DWORD64)InitTeb->StackAllocationBase + ImageInfo.MaximumStackSize);
     InitTeb->StackLimit = (PVOID)((DWORD64)InitTeb->StackBase - ImageInfo.CommittedStackSize);
-    AllocationSize = (ULONG)(ImageInfo.CommittedStackSize + 0x1000);
+    AllocationSize = (ULONG)(ImageInfo.CommittedStackSize + PAGE_SIZE);
     BaseAddress = (PVOID)((PCHAR)InitTeb->StackBase - AllocationSize);
     Status = ZwAllocateVirtualMemory(hProcess, (PVOID*)&BaseAddress, 0, &AllocationSize,
                                 MEM_COMMIT, PAGE_READWRITE);
@@ -466,9 +467,9 @@ BOOL BaseCreateStack(HANDLE hSection, HANDLE hProcess, PINITIAL_TEB InitTeb, PCO
         fprintf(stderr, "BaseCreateStack - ZwAllocateVirtualMemory failed : 0x%08X\n", Status);
         return FALSE;
     }
-    AllocationSize = 0x1000;
+    AllocationSize = PAGE_SIZE;
     Status = ZwProtectVirtualMemory(hProcess, (PVOID*)&BaseAddress, (PSIZE_T)&AllocationSize,
-                                PAGE_READWRITE|PAGE_GUARD, &OldProtect);
+                                PAGE_READWRITE | PAGE_GUARD, &OldProtect);
     if (!NT_SUCCESS(Status)) {
         fprintf(stderr, "BaseCreateStack - ZwProtectVirtualMemory failed : 0x%08X\n", Status);
         return FALSE;
@@ -496,7 +497,7 @@ BOOL BasePushProcessParameters(HANDLE hProcess)
         fprintf(stderr, "GetCurrentDirectory failed : 0x%lu\n", GetLastError());
         return FALSE;
     }
-    swprintf_s(PathFile, sizeof (PathFile), L"%s%s", CurrentDir, FILENAME);
+    swprintf_s(PathFile, sizeof (PathFile), L"\\??\\%s\\%s", CurrentDir, FILENAME);
     Status = ZwQueryInformationProcess(hProcess, ProcessBasicInformation,
                                 &ProcessInfo, sizeof(ProcessInfo), NULL);
     if (!NT_SUCCESS(Status)) {
@@ -510,6 +511,7 @@ BOOL BasePushProcessParameters(HANDLE hProcess)
 #endif
     RtlInitUnicodeString(&FilePath, (PWSTR)PathFile);
     printf("[+] path = %S\n", PathFile);
+    //+0x0c0 DesktopInfo      : _UNICODE_STRING "WinSta0\Default"
     Status = RtlCreateProcessParameters(&ProcessParameters, &FilePath, 0, 0, 0, 0, 0, 0, 0, 0);
     if (!NT_SUCCESS(Status)) {
         fprintf(stderr, "RtlCreateProcessParameters failed : 0x%08X\n", Status);
@@ -539,7 +541,7 @@ BOOL BasePushProcessParameters(HANDLE hProcess)
 ntdll!_PEB
    +0x020 ProcessParameters : Ptr64 _RTL_USER_PROCESS_PARAMETERS
 */
-    Status = ZwWriteVirtualMemory(hProcess, (PCHAR)(ProcessInfo.PebBaseAddress) + 0x020, &BaseAddress, sizeof(BaseAddress), 0);
+    Status = ZwWriteVirtualMemory(hProcess, (PCHAR)(ProcessInfo.PebBaseAddress) + 0x20, &BaseAddress, sizeof(BaseAddress), 0);
 #else
     Status = ZwWriteVirtualMemory(hProcess, (PCHAR)(ProcessInfo.PebBaseAddress) + 0x10, &BaseAddress, sizeof(BaseAddress), 0);
 #endif
@@ -564,7 +566,7 @@ int main(void)
     HANDLE hThread = INVALID_HANDLE_VALUE;
     OBJECT_ATTRIBUTES ObjectAttributes;
     INITIAL_TEB InitTeb;
-    CONTEXT Context;
+    CONTEXT Context = {CONTEXT_FULL};
     CLIENT_ID ClientId;
 
     RtlZeroMemory(&InitTeb, sizeof (InitTeb));
@@ -606,7 +608,7 @@ int main(void)
 
     /* Creates and initializes a thread object (suspended)*/
     InitializeObjectAttributes(&ObjectAttributes, NULL, 0, NULL, NULL);
-    Status = ZwCreateThread(&hThread, THREAD_ALL_ACCESS, NULL, hProcess,
+    Status = ZwCreateThread(&hThread, THREAD_ALL_ACCESS, &ObjectAttributes, hProcess,
                         &ClientId, &Context, &InitTeb, TRUE);
     if (!NT_SUCCESS(Status)) {
         fprintf(stderr, "ZwCreateThread failed : 0x%08X\n", Status);
@@ -617,6 +619,9 @@ int main(void)
     if (BasePushProcessParameters(hProcess) == FALSE) {
         goto end;
     }
+
+    /* Windows XP we need to signal CSRSS */
+
     ResumeThread(hThread);
 end:
     CloseHandle(hProcess);
@@ -624,21 +629,3 @@ end:
     CloseHandle(hFile);
     return 0;
 }
-
-///* CsrClientCallServer */
-//#if _WIN64
-//    typedef NTSTATUS (__fastcall *CsrClientCallServer_lpfn) (PVOID Message,
-//        PVOID CaptureBuffer,
-//        ULONG Opcode,
-//        ULONG Length);
-//#else
-//    typedef NTSTATUS (__stdcall *CsrClientCallServer_lpfn) (PVOID Message,
-//        PVOID CaptureBuffer,
-//        ULONG Opcode,
-//        ULONG Length);
-//#endif
-//CsrClientCallServer = (CsrClientCallServer_lpfn)GetProcAddress(GetModuleHandleA("ntdll"), "CsrClientCallServer");
-//if (CsrClientCallServer == NULL) {
-//    fprintf(stderr, "[-] GetProcAddress failed : %lu\n", GetLastError());
-//    goto end;
-//}
